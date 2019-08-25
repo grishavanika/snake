@@ -76,7 +76,7 @@ struct Game
     void on_reset();
     void on_pause(unsigned t_ms);
 
-    void try_change_direction(Direction d);
+    void try_change_direction(const Direction& d);
 
 private:
     State consume_food();
@@ -384,14 +384,21 @@ inline void Game::change_speed()
     }
 }
 
-inline void Game::try_change_direction(Direction d)
+inline void Game::try_change_direction(const Direction& d)
 {
-    if ((d == last_direction())
-        || (d == GetOppositeDirection(last_direction()))
-        || (d == GetOppositeDirection(direction_)))
-    {
-        return;
-    }
+	auto is_disabled = [d](Direction current)
+	{
+		return ((d == current)
+			|| (d == GetOppositeDirection(current)));
+	};
+	if (is_disabled(direction_))
+	{
+		return;
+	}
+	if (!directions_.empty() && is_disabled(directions_.back()))
+	{
+		return;
+	}
     directions_.push_back(d);
 }
 
