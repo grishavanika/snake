@@ -1,0 +1,8 @@
+*.exe
+*.obj
+# emscripten files
+*.mem
+*.html
+*.js
+*.wasm
+!snake_win.html
