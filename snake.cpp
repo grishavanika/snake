@@ -101,7 +101,7 @@ private:
 
     Position make_tile_in_direction(Position p, Direction d) const;
 
-	void handle_input(unsigned tile_dt);
+    void handle_input(unsigned tile_dt);
     HitTarget on_move(unsigned t_ms);
 
     static Direction GetOppositeDirection(Direction d);
@@ -160,14 +160,14 @@ inline void Game::on_update(unsigned t_ms)
         return;
     }
 
-	const unsigned tile_dt = get_move_delta(t_ms);
-	handle_input(tile_dt);
-	if (tile_dt == 0)
-	{
-		return;
-	}
+    const unsigned tile_dt = get_move_delta(t_ms);
+    handle_input(tile_dt);
+    if (tile_dt == 0)
+    {
+        return;
+    }
 
-	last_move_time_ms_ = t_ms;
+    last_move_time_ms_ = t_ms;
     const HitTarget hit = on_move(tile_dt);
     switch (hit)
     {
@@ -188,24 +188,24 @@ inline void Game::on_update(unsigned t_ms)
 
 inline void Game::handle_input(unsigned tile_dt)
 {
-	const auto last = last_direction();
-	if (last == GetOppositeDirection(direction_))
-	{
-		pop_last_direction();
-		return;
-	}
+    const auto last = last_direction();
+    if (last == GetOppositeDirection(direction_))
+    {
+        pop_last_direction();
+        return;
+    }
 
-	direction_ = last;
-	if (tile_dt != 0)
-	{
-		pop_last_direction();
-	}
+    direction_ = last;
+    if (tile_dt != 0)
+    {
+        pop_last_direction();
+    }
 }
 
 inline HitTarget Game::on_move(unsigned tile_dt)
 {
-	assert(parts_.size() > 0);
-	assert(tile_dt > 0);
+    assert(parts_.size() > 0);
+    assert(tile_dt > 0);
 
     HitTarget hit = HitTarget::None;
     for (unsigned i = 0; i < tile_dt; ++i)
@@ -221,7 +221,7 @@ inline HitTarget Game::on_move(unsigned tile_dt)
             hit = HitTarget::Snake;
         }
 
-		parts_.push_back(new_head);
+        parts_.push_back(new_head);
     }
     parts_.erase(std::begin(parts_), std::begin(parts_) + tile_dt);
 
@@ -241,7 +241,7 @@ inline void Game::pop_last_direction()
 {
     if (!directions_queue_.empty())
     {
-		directions_queue_.erase(directions_queue_.begin());
+        directions_queue_.erase(directions_queue_.begin());
     }
 }
 
@@ -400,11 +400,11 @@ inline void Game::change_speed()
 
 inline void Game::try_change_direction(const Direction& d)
 {
-	if ((state_ != State::Running)
-		|| (d == last_direction()))
-	{
-		return;
-	}
+    if ((state_ != State::Running)
+        || (d == last_direction()))
+    {
+        return;
+    }
     directions_queue_.push_back(d);
 }
 
@@ -425,7 +425,7 @@ inline void Game::on_reset()
 {
     state_ = State::Start;
 
-	food_ = {-1, -1};
+    food_ = {-1, -1};
     last_move_time_ms_ = 0;
     speed_ = 5;
 
@@ -441,13 +441,13 @@ inline void Game::on_reset()
 
 inline void Game::on_pause(unsigned t_ms)
 {
-	if (state_ == State::Start)
-	{
-		on_reset();
-		state_ = State::Running;
-		food_ = generate_new_food();
-		last_move_time_ms_ = t_ms;
-	}
+    if (state_ == State::Start)
+    {
+        on_reset();
+        state_ = State::Running;
+        food_ = generate_new_food();
+        last_move_time_ms_ = t_ms;
+    }
     else if (state_ == State::Pause)
     {
         state_ = State::Running;
@@ -536,7 +536,7 @@ void RenderSnake(SDL_Renderer* renderer
     AbortOnSDLError(SDL_RenderFillRects(
         renderer, rs.data(), static_cast<int>(rs.size())));
 
-    constexpr bool k_DebugDraw = false;
+    constexpr bool k_DebugDraw = true;
     if (k_DebugDraw)
     {
         const SDL_Color darker = MakeDarkerColor(color, 0.5f);
@@ -551,10 +551,10 @@ void RenderFood(SDL_Renderer* renderer
     , const Position& food
     , const SDL_Color& color)
 {
-	if ((food.x < 0) || (food.y < 0))
-	{
-		return;
-	}
+    if ((food.x < 0) || (food.y < 0))
+    {
+        return;
+    }
     const auto r = PositionToTileRect(food);
 
     AbortOnSDLError(filledCircleRGBA(renderer
