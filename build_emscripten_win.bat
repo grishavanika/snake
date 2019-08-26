@@ -17,11 +17,7 @@
 :: SDL2 example: https://main.lv/writeup/web_assembly_sdl_example.md
 :: 
 
-
-call build_emscripten_SDL2_gfx.bat
-
 set em_root=C:\dev\_opensource\emsdk
-set SDL_gfx=C:\libs\SDL2_gfx-1.0.4
 
 cd /d %em_root%
 call emsdk_env.bat
@@ -31,9 +27,7 @@ echo Building ...
 
 call emcc snake.cpp ^
 	-O2 ^
-	-s USE_SDL=2 ^
-	-I%SDL_gfx%\bin\include ^
-	-L%SDL_gfx%\bin\lib -lSDL2_gfx ^
+	-s USE_SDL=2 -s USE_SDL_GFX=2 ^
 	-std=c++14 ^
 	-o snake_win.js
 

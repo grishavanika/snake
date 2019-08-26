@@ -1,5 +1,12 @@
 *.exe
 *.obj
+#
+# Visual Studio
+.vs/*
+x64/*
+*.vcxproj*
+*.sln
+#
 # emscripten files
 *.mem
 *.html
