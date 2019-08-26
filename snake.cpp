@@ -25,6 +25,13 @@ struct Direction
     static constexpr Direction Down()  { return {0, +1}; }
     static constexpr Direction Left()  { return {-1, 0}; }
     static constexpr Direction Right() { return {+1, 0}; }
+
+    static Direction GetOpposite(Direction d)
+    {
+        d.dx *= -1;
+        d.dy *= -1;
+        return d;
+    }
 };
 
 inline bool operator==(const Direction& lhs, const Direction& rhs)
@@ -72,15 +79,19 @@ struct Game
     const std::vector<Position>& parts() const;
 
     void on_update(unsigned t_ms);
+    void on_toggle_pause(unsigned t_ms);
     void on_quit();
     void on_reset();
-    void on_pause(unsigned t_ms);
 
     void try_change_direction(const Direction& d);
 
 private:
+    void handle_input(unsigned tile_dt);
+    HitTarget on_move(unsigned t_ms);
     State consume_food();
-    void change_speed();
+    void pop_direction();
+
+    unsigned increase_speed() const;
 
     Direction find_tail_direction(
         const Position& before_tail
@@ -95,20 +106,13 @@ private:
     bool is_inside_snake(const Position& p
         , unsigned skip_tail = 0) const;
 
-    Position generate_new_food();
+    Position generate_new_food() const;
 
     unsigned get_move_delta(unsigned t_ms) const;
 
     Position make_tile_in_direction(Position p, Direction d) const;
 
-    void handle_input(unsigned tile_dt);
-    HitTarget on_move(unsigned t_ms);
-
-    static Direction GetOppositeDirection(Direction d);
-
-    Direction last_direction() const;
-
-    void pop_last_direction();
+    Direction next_direction() const;
 
 private:
     State state_{State::Start};
@@ -121,8 +125,7 @@ private:
     std::vector<Direction> directions_queue_{};
     Direction direction_;
 
-    std::random_device rd_;
-    std::mt19937 gen_{rd_()};
+    mutable std::mt19937 gen_{std::random_device()()};
 };
 
 /*explicit*/ inline Game::Game(unsigned width, unsigned height)
@@ -162,6 +165,7 @@ inline void Game::on_update(unsigned t_ms)
 
     const unsigned tile_dt = get_move_delta(t_ms);
     handle_input(tile_dt);
+
     if (tile_dt == 0)
     {
         return;
@@ -180,7 +184,8 @@ inline void Game::on_update(unsigned t_ms)
         state_ = consume_food();
         if (state_ == State::Running)
         {
-            change_speed();
+            food_ = generate_new_food();
+            speed_ = increase_speed();
         }
         break;
     }
@@ -188,17 +193,17 @@ inline void Game::on_update(unsigned t_ms)
 
 inline void Game::handle_input(unsigned tile_dt)
 {
-    const auto last = last_direction();
-    if (last == GetOppositeDirection(direction_))
+    const auto next = next_direction();
+    if (next == Direction::GetOpposite(direction_))
     {
-        pop_last_direction();
+        pop_direction();
         return;
     }
 
-    direction_ = last;
+    direction_ = next;
     if (tile_dt != 0)
     {
-        pop_last_direction();
+        pop_direction();
     }
 }
 
@@ -212,17 +217,18 @@ inline HitTarget Game::on_move(unsigned tile_dt)
     {
         const Position new_head = make_tile_in_direction(head(), direction_);
 
-        if (new_head == food_)
-        {
-            hit = HitTarget::Food;
-        }
-        else if (is_inside_snake(new_head, i + 1))
+        if (is_inside_snake(new_head, i + 1/*skip tails*/))
         {
             hit = HitTarget::Snake;
+        }
+        else if ((new_head == food_) && (hit != HitTarget::Snake))
+        {
+            hit = HitTarget::Food;
         }
 
         parts_.push_back(new_head);
     }
+
     parts_.erase(std::begin(parts_), std::begin(parts_) + tile_dt);
 
     return hit;
@@ -237,7 +243,7 @@ inline unsigned Game::get_move_delta(unsigned t_ms) const
     return tile_dt;
 }
 
-inline void Game::pop_last_direction()
+inline void Game::pop_direction()
 {
     if (!directions_queue_.empty())
     {
@@ -245,7 +251,7 @@ inline void Game::pop_last_direction()
     }
 }
 
-inline Direction Game::last_direction() const
+inline Direction Game::next_direction() const
 {
     if (directions_queue_.empty())
     {
@@ -291,12 +297,12 @@ inline State Game::consume_food()
     }
 
     parts_.insert(std::begin(parts_), tail);
-    if (parts_.size() == (field_width_ * field_height_))
+
+    if (parts_.size() >= (field_width_ * field_height_))
     {
         return State::Win;
     }
 
-    food_ = generate_new_food();
     return State::Running;
 }
 
@@ -310,7 +316,7 @@ inline Position Game::try_eat(Direction current) const
         : current;
     const Position old_tail = parts_[0];
     const Position new_tail = make_tile_in_direction(old_tail
-        , GetOppositeDirection(tail_direction));
+        , Direction::GetOpposite(tail_direction));
     const Position fixed = assist_with_tail_crash(
         old_tail, new_tail, tail_direction);
     return fixed;
@@ -372,7 +378,7 @@ inline Position Game::assist_with_tail_crash(const Position& old_tail
     return new_tail;
 }
 
-inline Position Game::generate_new_food()
+inline Position Game::generate_new_food() const
 {
     // Warn: this may take forever when snake is big
     assert(parts_.size() < (field_width_ * field_height_));
@@ -389,30 +395,22 @@ inline Position Game::generate_new_food()
     return food;
 }
 
-inline void Game::change_speed()
+inline unsigned Game::increase_speed() const
 {
     constexpr unsigned k_MaxSpeed = 30;
-    if (speed_ < k_MaxSpeed)
-    {
-        speed_ += 1;
-    }
+    return (speed_ < k_MaxSpeed)
+        ? (speed_ + 1)
+        : speed_;
 }
 
 inline void Game::try_change_direction(const Direction& d)
 {
     if ((state_ != State::Running)
-        || (d == last_direction()))
+        || (d == next_direction()))
     {
         return;
     }
     directions_queue_.push_back(d);
-}
-
-/*static*/ inline Direction Game::GetOppositeDirection(Direction d)
-{
-    d.dx *= -1;
-    d.dy *= -1;
-    return d;
 }
 
 inline void Game::on_quit()
@@ -439,7 +437,7 @@ inline void Game::on_reset()
 
 }
 
-inline void Game::on_pause(unsigned t_ms)
+inline void Game::on_toggle_pause(unsigned t_ms)
 {
     if (state_ == State::Start)
     {
@@ -627,6 +625,35 @@ void MainTick(void* data_ptr)
 
     const unsigned t_ms = SDL_GetTicks();
 
+    auto handle_key_down = [&](SDL_Keycode code)
+    {
+        switch (code)
+        {
+        case SDLK_ESCAPE:
+            game.on_reset();
+            break;
+        case SDLK_SPACE:
+            game.on_toggle_pause(t_ms);
+            break;
+        case SDLK_UP:
+        case SDLK_w:
+            game.try_change_direction(Direction::Up());
+            break;
+        case SDLK_DOWN:
+        case SDLK_s:
+            game.try_change_direction(Direction::Down());
+            break;
+        case SDLK_LEFT:
+        case SDLK_a:
+            game.try_change_direction(Direction::Left());
+            break;
+        case SDLK_RIGHT:
+        case SDLK_d:
+            game.try_change_direction(Direction::Right());
+            break;
+        }
+    };
+
     SDL_Event e{};
     while (SDL_PollEvent(&e))
     {
@@ -636,31 +663,7 @@ void MainTick(void* data_ptr)
             game.on_quit();
             break;
         case SDL_KEYDOWN:
-            switch (e.key.keysym.sym)
-            {
-            case SDLK_ESCAPE:
-                game.on_reset();
-                break;
-            case SDLK_SPACE:
-                game.on_pause(t_ms);
-                break;
-            case SDLK_UP:
-            case SDLK_w:
-                game.try_change_direction(Direction::Up());
-                break;
-            case SDLK_DOWN:
-            case SDLK_s:
-                game.try_change_direction(Direction::Down());
-                break;
-            case SDLK_LEFT:
-            case SDLK_a:
-                game.try_change_direction(Direction::Left());
-                break;
-            case SDLK_RIGHT:
-            case SDLK_d:
-                game.try_change_direction(Direction::Right());
-                break;
-            }
+            handle_key_down(e.key.keysym.sym);
             break;
         }
     }
