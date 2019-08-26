@@ -35,7 +35,7 @@ set gcc=C:\Programs\mingw_gcc_7.3.0\bin\g++.exe
 %gcc% -std=c++17 -O2 snake.cpp ^
 	-o snake_gcc.exe ^
 	-I%gcc_includes% -L%gcc_libs% ^
-	-lSDL2 -lSDL2_gfx ^
+	-lSDL2 -lSDL2_gfx -lSDL2_ttf ^
 	-lmingw32 -mwindows -Wl,--no-undefined -lm -ldinput8 -ldxguid -ldxerr8 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lshell32 -lversion -luuid -static-libgcc
 :: this last line is SDL2 dependencies/linker and
 :: comes from `./sdl2-config --libs`

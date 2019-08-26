@@ -27,7 +27,8 @@ echo Building ...
 
 call emcc snake.cpp ^
 	-O2 ^
-	-s USE_SDL=2 -s USE_SDL_GFX=2 ^
+	-s USE_SDL=2 -s USE_SDL_GFX=2 -s USE_SDL_TTF=2 ^
+	--preload-file resources ^
 	-std=c++14 ^
 	-o snake_win.js
 

@@ -77,6 +77,7 @@ struct Game
     State state() const;
     const Position& food() const;
     const std::vector<Position>& parts() const;
+    unsigned speed() const;
 
     void on_update(unsigned t_ms);
     void on_toggle_pause(unsigned t_ms);
@@ -149,6 +150,11 @@ inline State Game::state() const
 inline const Position& Game::food() const
 {
     return food_;
+}
+
+inline unsigned Game::speed() const
+{
+    return speed_;
 }
 
 inline const std::vector<Position>& Game::parts() const
@@ -460,13 +466,21 @@ inline void Game::on_toggle_pause(unsigned t_ms)
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL2_gfxPrimitives.h>
+#include <SDL2/SDL_ttf.h>
 
 #include <algorithm>
+#include <sstream>
+#include <string>
 
 constexpr int k_ScreenWidth  = 480;
 constexpr int k_ScreenHeight = 480;
 constexpr int k_TileHeight   = 12;
 constexpr int k_TileWidth    = 12;
+
+const SDL_Color k_WhiteColor{0xff, 0xff, 0xff, 0xff};
+const SDL_Color k_RedColor  {0xff, 0x32, 0x32, 0xff};
+const SDL_Color k_GreenColor{0x32, 0xff, 0x32, 0xff};
+const SDL_Color k_GrayColor {0x64, 0x64, 0x64, 0xff};
 
 static_assert((k_ScreenWidth % k_TileWidth) == 0,
     "Bad width: tiles count should be integral");
@@ -575,7 +589,7 @@ void RenderHead(SDL_Renderer* renderer
         renderer, &r));
 }
 
-void RenderState(SDL_Renderer* renderer
+void RenderGame(SDL_Renderer* renderer
     , const Game& game
     , const SDL_Color& color)
 {
@@ -584,38 +598,155 @@ void RenderState(SDL_Renderer* renderer
     RenderHead(renderer, game.head(), color);
 }
 
-void RenderGame(SDL_Renderer* renderer, const Game& game)
+struct TickData
 {
-    const SDL_Color k_WhiteColor{0xff, 0xff, 0xff, 0xff};
-    const SDL_Color k_RedColor  {0xff, 0x32, 0x32, 0xff};
-    const SDL_Color k_GreenColor{0x32, 0xff, 0x32, 0xff};
-    const SDL_Color k_GrayColor {0x64, 0x64, 0x64, 0xff};
+    Game& game;
+    SDL_Renderer* renderer = nullptr;
 
-    switch (game.state())
+    TTF_Font* font = nullptr;
+    SDL_Texture* text = nullptr;
+    SDL_Rect text_rect{};
+};
+
+void RenderStats(TickData& data)
+{
+    assert(data.text);
+
+    SDL_Rect dst{};
+
+    dst.x = ((k_ScreenWidth - data.text_rect.w) / 2);
+    dst.y = ((k_ScreenHeight - data.text_rect.h) / 2);
+    dst.w = data.text_rect.w;
+    dst.h = data.text_rect.h;
+
+    AbortOnSDLError(SDL_RenderCopy(data.renderer, data.text
+        , &data.text_rect
+        , &dst));
+}
+
+void RenderAll(TickData& data)
+{
+    switch (data.game.state())
     {
     case State::Running:
-        RenderState(renderer, game, k_WhiteColor);
+        RenderGame(data.renderer, data.game, k_WhiteColor);
         break;
     case State::Start:
     case State::Pause:
-        RenderState(renderer, game, k_GrayColor);
+        RenderGame(data.renderer, data.game, k_GrayColor);
+        RenderStats(data);
         break;
     case State::Loss:
-        RenderState(renderer, game, k_RedColor);
+        RenderGame(data.renderer, data.game, k_RedColor);
+        RenderStats(data);
         break;
     case State::Win:
-        RenderState(renderer, game, k_GreenColor);
+        RenderGame(data.renderer, data.game, k_GreenColor);
+        RenderStats(data);
         break;
     case State::Quit:
         break;
     }
 }
 
-struct TickData
+SDL_Texture* DrawTextLinesToTexture(
+    SDL_Renderer* renderer
+    , TTF_Font* font
+    , std::vector<std::string> lines
+    , SDL_Rect& size
+    , SDL_Color color = k_WhiteColor)
 {
-    Game& game;
-    SDL_Renderer* renderer;
-};
+    size = {};
+
+    SDL_Texture* texture = SDL_CreateTexture(renderer
+        , SDL_PIXELFORMAT_RGBA8888
+        , SDL_TEXTUREACCESS_TARGET
+        , k_ScreenWidth
+        , k_ScreenHeight);
+    AbortOnSDLError(texture);
+    AbortOnSDLError(SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND));
+    AbortOnSDLError(SDL_SetRenderTarget(renderer, texture));
+    AbortOnSDLError(SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0));
+    AbortOnSDLError(SDL_RenderClear(renderer));
+
+    auto draw_next_line = [&](const std::string& s)
+    {
+        SDL_Surface* surface = TTF_RenderText_Solid(
+            font, s.c_str(), color);
+
+        SDL_Rect dst{};
+        dst.x = 0;
+        dst.y = size.h;
+        dst.w = surface->w;
+        dst.h = surface->h;
+        size.w = std::max(dst.w, size.w);
+        size.h += dst.h;
+
+        AbortOnSDLError(surface);
+        SDL_Texture* text = SDL_CreateTextureFromSurface(renderer, surface);
+        AbortOnSDLError(text);
+        SDL_FreeSurface(surface);
+
+        AbortOnSDLError(SDL_RenderCopy(
+            renderer, text, nullptr/*copy full texture*/, &dst));
+
+        SDL_DestroyTexture(text);
+    };
+
+    for (const std::string& s : lines)
+    {
+        draw_next_line(s);
+    }
+
+    AbortOnSDLError(SDL_SetRenderTarget(renderer, nullptr/*reset to default*/));
+    return texture;
+}
+
+SDL_Texture* BuildMenu(const Game& game
+    , SDL_Renderer* renderer
+    , TTF_Font* font
+    , SDL_Rect& text_rect)
+{
+    std::vector<std::string> lines;
+    std::ostringstream ss;
+    auto new_line = [&]()
+    {
+        lines.push_back(ss.str());
+        ss.str(std::string());
+    };
+
+    ss << "Speed : " << game.speed();        new_line();
+    ss << "Length: " << game.parts().size(); new_line();
+    ss << "Space : " << "toggle pause";      new_line();
+    ss << "Esc   : " << "restart";           new_line();
+
+    return DrawTextLinesToTexture(renderer, font, std::move(lines), text_rect);
+}
+
+void UpdateMenu(TickData& data, State old_state, bool hard_reset)
+{
+    const State state = data.game.state();
+    const bool switch_to_idle = (old_state == State::Running)
+        && (state != State::Running);
+    const bool switch_to_running = (old_state != State::Running)
+        && (state == State::Running);
+    
+    const bool invalidate_menu = hard_reset
+        || switch_to_idle
+        || switch_to_running;
+    if (invalidate_menu && data.text)
+    {
+        SDL_DestroyTexture(data.text);
+        data.text = nullptr;
+    }
+
+    const bool need_text = (state != State::Running);
+    if (need_text && !data.text)
+    {
+        data.text = BuildMenu(data.game, data.renderer
+            , data.font, data.text_rect);
+    }
+}
 
 void MainTick(void* data_ptr)
 {
@@ -624,6 +755,8 @@ void MainTick(void* data_ptr)
     SDL_Renderer* renderer = data->renderer;
 
     const unsigned t_ms = SDL_GetTicks();
+    const State old_state = game.state();
+    bool hard_menu_reset = false;
 
     auto handle_key_down = [&](SDL_Keycode code)
     {
@@ -631,6 +764,7 @@ void MainTick(void* data_ptr)
         {
         case SDLK_ESCAPE:
             game.on_reset();
+            hard_menu_reset = true;
             break;
         case SDLK_SPACE:
             game.on_toggle_pause(t_ms);
@@ -670,10 +804,12 @@ void MainTick(void* data_ptr)
 
     game.on_update(t_ms);
 
+    UpdateMenu(*data, old_state, hard_menu_reset);
+
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xff);
     SDL_RenderClear(renderer);
 
-    RenderGame(renderer, game);
+    RenderAll(*data);
 
     SDL_RenderPresent(renderer);
 }
@@ -712,6 +848,7 @@ int WINAPI _tWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPTSTR, _In_ int)
 
     // Initialize SDL. Ignore any errors and leak resources
     AbortOnSDLError(SDL_Init(SDL_INIT_VIDEO));
+    AbortOnSDLError(TTF_Init());
 
     SDL_Window* window = SDL_CreateWindow(
         "Snake" // title
@@ -729,7 +866,11 @@ int WINAPI _tWinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPTSTR, _In_ int)
 
     Game game((k_ScreenWidth / k_TileWidth), (k_ScreenHeight / k_TileHeight));
 
-    TickData data{game, renderer};
+    TickData data{game};
+    data.renderer = renderer;
+    data.font = TTF_OpenFont("resources/RobotoMono-Regular.ttf", 30/*size*/);
+    AbortOnSDLError(data.font);
+
     MainLoop(data);
 
     return 0;
