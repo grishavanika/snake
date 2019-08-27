@@ -548,7 +548,7 @@ void RenderSnake(SDL_Renderer* renderer
     AbortOnSDLError(SDL_RenderFillRects(
         renderer, rs.data(), static_cast<int>(rs.size())));
 
-    constexpr bool k_DebugDraw = true;
+    constexpr bool k_DebugDraw = false;
     if (k_DebugDraw)
     {
         const SDL_Color darker = MakeDarkerColor(color, 0.5f);
@@ -626,27 +626,35 @@ void RenderStats(TickData& data)
 
 void RenderAll(TickData& data)
 {
+    SDL_Renderer* renderer = data.renderer;
+    Game& game = data.game;
+
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xff);
+    SDL_RenderClear(renderer);
+
     switch (data.game.state())
     {
     case State::Running:
-        RenderGame(data.renderer, data.game, k_WhiteColor);
+        RenderGame(renderer, game, k_WhiteColor);
         break;
     case State::Start:
     case State::Pause:
-        RenderGame(data.renderer, data.game, k_GrayColor);
+        RenderGame(renderer, game, k_GrayColor);
         RenderStats(data);
         break;
     case State::Loss:
-        RenderGame(data.renderer, data.game, k_RedColor);
+        RenderGame(renderer, game, k_RedColor);
         RenderStats(data);
         break;
     case State::Win:
-        RenderGame(data.renderer, data.game, k_GreenColor);
+        RenderGame(renderer, game, k_GreenColor);
         RenderStats(data);
         break;
     case State::Quit:
         break;
     }
+
+    SDL_RenderPresent(renderer);
 }
 
 SDL_Texture* DrawTextLinesToTexture(
@@ -673,6 +681,9 @@ SDL_Texture* DrawTextLinesToTexture(
     {
         SDL_Surface* surface = TTF_RenderText_Solid(
             font, s.c_str(), color);
+        AbortOnSDLError(surface);
+        SDL_Texture* text = SDL_CreateTextureFromSurface(renderer, surface);
+        AbortOnSDLError(text);
 
         SDL_Rect dst{};
         dst.x = 0;
@@ -682,9 +693,6 @@ SDL_Texture* DrawTextLinesToTexture(
         size.w = std::max(dst.w, size.w);
         size.h += dst.h;
 
-        AbortOnSDLError(surface);
-        SDL_Texture* text = SDL_CreateTextureFromSurface(renderer, surface);
-        AbortOnSDLError(text);
         SDL_FreeSurface(surface);
 
         AbortOnSDLError(SDL_RenderCopy(
@@ -726,21 +734,16 @@ SDL_Texture* BuildMenu(const Game& game
 void UpdateMenu(TickData& data, State old_state, bool hard_reset)
 {
     const State state = data.game.state();
-    const bool switch_to_idle = (old_state == State::Running)
-        && (state != State::Running);
-    const bool switch_to_running = (old_state != State::Running)
-        && (state == State::Running);
+    const bool changed = (old_state != state);
     
-    const bool invalidate_menu = hard_reset
-        || switch_to_idle
-        || switch_to_running;
+    const bool invalidate_menu = (hard_reset || changed);
     if (invalidate_menu && data.text)
     {
         SDL_DestroyTexture(data.text);
         data.text = nullptr;
     }
 
-    const bool need_text = (state != State::Running);
+    const bool need_text = (state != State::Running) && (state != State::Quit);
     if (need_text && !data.text)
     {
         data.text = BuildMenu(data.game, data.renderer
@@ -803,15 +806,8 @@ void MainTick(void* data_ptr)
     }
 
     game.on_update(t_ms);
-
     UpdateMenu(*data, old_state, hard_menu_reset);
-
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0xff);
-    SDL_RenderClear(renderer);
-
     RenderAll(*data);
-
-    SDL_RenderPresent(renderer);
 }
 
 #if (__EMSCRIPTEN__)
